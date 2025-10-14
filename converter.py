@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from markitdown import MarkItDown
 import pypdfium2 as pdfium
+import pypdfium2.raw as pdfium_c
 from pypdf import PdfReader, PdfWriter
 from PIL import Image
 from openai import OpenAI
@@ -71,8 +72,48 @@ def render_page_png(pdf_doc: pdfium.PdfDocument, page_index: int, out_png: Path,
     pil.save(out_png, format="PNG")
 
 
-def build_messages(raw_markdown: str, page_png_path: Path, page_no: int) -> list[dict[str, Any]]:
+def extract_images_from_page(pdf_doc: pdfium.PdfDocument, page_index: int, out_dir: Path, page_no: int) -> List[str]:
+    page = pdf_doc[page_index]
+    images_dir = out_dir / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+
+    extracted_images = []
+
+    try:
+        obj_searcher = page.get_objects(
+            filter=(pdfium_c.FPDF_PAGEOBJ_IMAGE,),
+            max_depth=2
+        )
+        image_objects = list(obj_searcher)
+
+        for img_idx, image_obj in enumerate(image_objects, 1):
+            try:
+                image_filename = f"page-{page_no:03d}_image-{img_idx}.png"
+                image_path = images_dir / image_filename
+
+                pil_image = image_obj.get_bitmap(render=True).to_pil()
+                pil_image.save(str(image_path), format="PNG")
+
+                extracted_images.append(f"images/{image_filename}")
+            except Exception as e:
+                continue
+
+    except Exception as e:
+        pass
+
+    return extracted_images
+
+
+def build_messages(raw_markdown: str, page_png_path: Path, page_no: int, extracted_images: List[str] = None) -> list[dict[str, Any]]:
     img_b64 = b64_image(page_png_path)
+
+    image_info = ""
+    if extracted_images and len(extracted_images) > 0:
+        image_info = f"\n\nExtracted images from this page (reference these in markdown):\n"
+        for img_path in extracted_images:
+            image_info += f"- {img_path}\n"
+        image_info += "\nUse ![alt text]({image_path}) syntax to reference these images in appropriate locations in the markdown."
+
     return [
         {
             "role": "system",
@@ -83,7 +124,9 @@ def build_messages(raw_markdown: str, page_png_path: Path, page_no: int) -> list
                 "If the markdown text format does not match the image, prioritize the document structure from the image. "
                 "Infer headings, lists, tables (GitHub Flavored Markdown). "
                 "Keep math as LaTeX ($...$ / $$...$$). "
-                "If a figure/caption is obvious, include it as a Markdown figure. "
+                "If images were extracted from the page, you will be provided with their paths. "
+                "Reference these extracted images in the markdown using ![description](image_path) syntax where appropriate. "
+                "Place image references where they logically appear in the document flow. "
                 "Return ONLY the Markdown for this page - do NOT wrap it in code blocks or markdown fences. "
                 "Preserve Chart formatting. If the text does not respect the chart from the image, reformat it to match the chart."
             ),
@@ -91,7 +134,7 @@ def build_messages(raw_markdown: str, page_png_path: Path, page_no: int) -> list
         {
             "role": "user",
             "content": [
-                {"type": "text", "text": f"Page {page_no} — raw markdown to clean:\n\n{raw_markdown}"},
+                {"type": "text", "text": f"Page {page_no} — raw markdown to clean:{image_info}\n\n{raw_markdown}"},
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}", "detail": "high"}},
             ],
         },
@@ -104,13 +147,10 @@ def openai_cleanup_page(
     raw_markdown: str,
     png_path: Path,
     temperature: float,
+    extracted_images: List[str] = None,
 ) -> Tuple[int, str, Dict[str, int]]:
-    """
-    Worker function for a single page: calls OpenAI and returns (page_no, cleaned_markdown, usage).
-    Creates its own OpenAI client (thread-safe).
-    """
     client = OpenAI()
-    messages = build_messages(raw_markdown, png_path, page_no)
+    messages = build_messages(raw_markdown, png_path, page_no, extracted_images)
     resp = client.chat.completions.create(model=model, messages=messages, temperature=temperature)
     md_text = (resp.choices[0].message.content or "").strip()
     usage = {
@@ -214,14 +254,14 @@ def process_file(
             else:
                 raw_md = ""
 
-            page_jobs = [(page_no, md_path, png_path, raw_md)]
+            page_jobs = [(page_no, md_path, png_path, raw_md, [])]
         total_pages = 1
 
     else:
         pdf_doc = pdfium.PdfDocument(str(input_path))
         total_pages = len(pdf_doc)
 
-        page_jobs: List[Tuple[int, Path, Path, str]] = []
+        page_jobs: List[Tuple[int, Path, Path, str, List[str]]] = []
         for i in range(total_pages):
             page_no = i + 1
             png_path = out_dir / f"page-{page_no:03d}.png"
@@ -234,16 +274,18 @@ def process_file(
             raw_md = markitdown_convert_page(md, page_pdf_bytes)
             render_page_png(pdf_doc, i, png_path, dpi=dpi)
 
+            extracted_images = extract_images_from_page(pdf_doc, i, out_dir, page_no)
+
             if use_ocr_if_needed and len(raw_md.strip()) < min_text_length:
                 ocr_text = ocr_image(png_path)
                 raw_md = ocr_text
 
-            page_jobs.append((page_no, md_path, png_path, raw_md))
+            page_jobs.append((page_no, md_path, png_path, raw_md, extracted_images))
 
     total_jobs = len(page_jobs)
 
     if skip_openai:
-        for page_no, md_path, png_path, raw_md in page_jobs:
+        for page_no, md_path, png_path, raw_md, extracted_images in page_jobs:
             cleaned = raw_md
             with md_path.open("w", encoding="utf-8") as f:
                 f.write(cleaned.strip() + "\n")
@@ -261,8 +303,9 @@ def process_file(
                     raw_md,
                     png_path,
                     temperature,
+                    extracted_images,
                 ): (page_no, md_path, png_path)
-                for (page_no, md_path, png_path, raw_md) in page_jobs
+                for (page_no, md_path, png_path, raw_md, extracted_images) in page_jobs
             }
 
             for fut in as_completed(futures):
@@ -270,7 +313,7 @@ def process_file(
                 try:
                     _page_no, cleaned, usage = fut.result()
                 except Exception as e:
-                    raw_md = next(r for (p, _, _, r) in page_jobs if p == page_no)
+                    raw_md = next(r for (p, _, _, r, _) in page_jobs if p == page_no)
                     cleaned = raw_md
                     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
