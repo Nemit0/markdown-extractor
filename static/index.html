@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Extractor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .drop-zone {
+            border: 3px dashed #667eea;
+            border-radius: 8px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9ff;
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: #764ba2;
+            background: #f0f1ff;
+        }
+
+        .drop-zone-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+        }
+
+        .drop-zone-text {
+            font-size: 1.2rem;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .drop-zone-hint {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .file-list {
+            margin-top: 30px;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9ff;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .file-name {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .file-size {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .remove-btn {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .remove-btn:hover {
+            background: #ee5a6f;
+        }
+
+        .options {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9ff;
+            border-radius: 6px;
+        }
+
+        .toggle-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toggle-option label {
+            font-weight: 500;
+            color: #333;
+            cursor: pointer;
+        }
+
+        .toggle-option input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .actions {
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+        }
+
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .progress-container.show {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .progress-text {
+            color: white;
+            font-weight: 600;
+            font-size: 0.9rem;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1;
+        }
+
+        .progress-details {
+            margin-top: 10px;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #d0d0d0;
+        }
+
+        .status {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9ff;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .status-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+
+        .status-item {
+            padding: 10px;
+            margin: 8px 0;
+            background: white;
+            border-radius: 4px;
+            border-left: 4px solid #667eea;
+        }
+
+        .status-item.error {
+            border-left-color: #ff4757;
+        }
+
+        .status-item.success {
+            border-left-color: #2ed573;
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Markdown Extractor</h1>
+            <p>Extract clean markdown from PDFs and images with OCR support</p>
+        </div>
+
+        <div class="card">
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-icon">+</div>
+                <div class="drop-zone-text">Drag & drop files here</div>
+                <div class="drop-zone-hint">or click to browse (PDF, PNG, JPG, JPEG)</div>
+            </div>
+
+            <input type="file" id="fileInput" multiple accept=".pdf,.png,.jpg,.jpeg">
+
+            <div class="file-list" id="fileList"></div>
+
+            <div class="options">
+                <div class="toggle-option">
+                    <input type="checkbox" id="autoOcrToggle">
+                    <label for="autoOcrToggle">Auto-detect OCR requirement (samples 3-5 random pages)</label>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button class="btn btn-secondary" id="clearBtn">Clear All</button>
+                <button class="btn btn-primary" id="processBtn" disabled>Process Files</button>
+            </div>
+
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                    <div class="progress-text" id="progressText">0%</div>
+                </div>
+                <div class="progress-details" id="progressDetails"></div>
+            </div>
+
+            <div class="status" id="status"></div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const processBtn = document.getElementById('processBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const status = document.getElementById('status');
+        const autoOcrToggle = document.getElementById('autoOcrToggle');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const progressDetails = document.getElementById('progressDetails');
+
+        let files = [];
+        let ws = null;
+
+        // Click to browse
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        // Drag and drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        function handleFiles(newFiles) {
+            Array.from(newFiles).forEach(file => {
+                // Check if file already exists
+                if (!files.some(f => f.name === file.name)) {
+                    files.push(file);
+                }
+            });
+            updateFileList();
+            updateProcessBtn();
+        }
+
+        function updateFileList() {
+            fileList.innerHTML = '';
+
+            files.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+
+                const fileInfo = document.createElement('div');
+                fileInfo.className = 'file-info';
+
+                const fileName = document.createElement('div');
+                fileName.className = 'file-name';
+                fileName.textContent = file.name;
+
+                const fileSize = document.createElement('div');
+                fileSize.className = 'file-size';
+                fileSize.textContent = formatFileSize(file.size);
+
+                fileInfo.appendChild(fileName);
+                fileInfo.appendChild(fileSize);
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-btn';
+                removeBtn.textContent = 'Remove';
+                removeBtn.onclick = () => removeFile(index);
+
+                fileItem.appendChild(fileInfo);
+                fileItem.appendChild(removeBtn);
+                fileList.appendChild(fileItem);
+            });
+        }
+
+        function removeFile(index) {
+            files.splice(index, 1);
+            updateFileList();
+            updateProcessBtn();
+        }
+
+        function updateProcessBtn() {
+            processBtn.disabled = files.length === 0;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        clearBtn.addEventListener('click', () => {
+            files = [];
+            updateFileList();
+            updateProcessBtn();
+            status.classList.remove('show');
+            status.innerHTML = '';
+            progressContainer.classList.remove('show');
+            progressFill.style.width = '0%';
+            progressText.textContent = '0%';
+            progressDetails.textContent = '';
+        });
+
+        processBtn.addEventListener('click', async () => {
+            if (files.length === 0) return;
+
+            processBtn.disabled = true;
+            clearBtn.disabled = true;
+
+            // Show progress bar
+            progressContainer.classList.add('show');
+            status.classList.remove('show');
+            progressFill.style.width = '0%';
+            progressText.textContent = '0%';
+            progressDetails.textContent = 'Uploading files...';
+
+            try {
+                // Upload files
+                const formData = new FormData();
+                files.forEach(file => {
+                    formData.append('files', file);
+                });
+
+                const uploadResponse = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!uploadResponse.ok) {
+                    throw new Error('Upload failed');
+                }
+
+                const uploadData = await uploadResponse.json();
+                const jobId = uploadData.job_id;
+
+                // Connect WebSocket for progress
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/${jobId}`);
+
+                let totalPages = 0;
+                let currentPage = 0;
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'progress') {
+                        currentPage = data.current;
+                        totalPages = data.total;
+                        const percent = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
+
+                        progressFill.style.width = `${percent}%`;
+                        progressText.textContent = `${percent}%`;
+                        progressDetails.textContent = `${data.status} (File ${data.file_index}/${data.total_files} | Page ${currentPage}/${totalPages})`;
+                    } else if (data.type === 'file_start') {
+                        progressDetails.textContent = `Starting ${data.filename} (File ${data.file_index}/${data.total_files})`;
+                    } else if (data.type === 'file_complete') {
+                        progressDetails.textContent = `Completed ${data.filename} (File ${data.file_index}/${data.total_files})`;
+                    } else if (data.type === 'file_error') {
+                        progressDetails.textContent = `Error in ${data.filename}: ${data.error}`;
+                    }
+                };
+
+                ws.onerror = () => {
+                    progressDetails.textContent = 'WebSocket connection error';
+                };
+
+                // Process files with auto-OCR option
+                const autoOcr = autoOcrToggle.checked;
+                const processResponse = await fetch(`/api/process/${jobId}?auto_ocr=${autoOcr}`, {
+                    method: 'POST'
+                });
+
+                if (!processResponse.ok) {
+                    throw new Error('Processing failed');
+                }
+
+                const processData = await processResponse.json();
+
+                // Close WebSocket
+                if (ws) {
+                    ws.close();
+                }
+
+                // Hide progress, show results
+                progressContainer.classList.remove('show');
+                status.classList.add('show');
+
+                // Display results
+                let html = '<div class="status-title">Processing Complete</div>';
+
+                processData.results.forEach(result => {
+                    const className = result.success ? 'success' : 'error';
+                    let text = `<strong>${result.filename}</strong>: `;
+
+                    if (result.success) {
+                        text += `Processed ${result.pages_processed}/${result.total_pages} pages. `;
+                        text += `Tokens used: ${result.token_usage.total_tokens}`;
+                    } else {
+                        text += `Error: ${result.error}`;
+                    }
+
+                    html += `<div class="status-item ${className}">${text}</div>`;
+                });
+
+                html += `<button class="btn btn-primary" style="margin-top: 20px;" onclick="window.location.href='/api/download/${jobId}'">Download Results (ZIP)</button>`;
+
+                status.innerHTML = html;
+
+            } catch (error) {
+                progressContainer.classList.remove('show');
+                status.classList.add('show');
+                status.innerHTML = `<div class="status-title">Error</div><div class="status-item error">${error.message}</div>`;
+            } finally {
+                if (ws) {
+                    ws.close();
+                }
+                processBtn.disabled = false;
+                clearBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
