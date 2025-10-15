@@ -89,10 +89,10 @@ async def upload_files(files: List[UploadFile] = File(...)):
             continue
 
         ext = Path(file.filename).suffix.lower()
-        if ext not in ['.pdf', '.png', '.jpg', '.jpeg']:
+        if ext not in ['.pdf', '.png', '.jpg', '.jpeg', '.docx', '.pptx', '.xlsx']:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported file type: {ext}. Only PDF, PNG, JPG, JPEG are supported."
+                detail=f"Unsupported file type: {ext}. Only PDF, PNG, JPG, JPEG, DOCX, PPTX, XLSX are supported."
             )
 
         file_path = job_upload_dir / file.filename
@@ -125,7 +125,7 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
 
 
 @app.post("/api/process/{job_id}")
-async def process_job(job_id: str, auto_ocr: bool = False):
+async def process_job(job_id: str, auto_ocr: bool = False, model: str = "gpt-4o"):
 
     job_upload_dir = UPLOAD_DIR / job_id
     job_output_dir = OUTPUT_DIR / job_id
@@ -176,7 +176,7 @@ async def process_job(job_id: str, auto_ocr: bool = False):
                 lambda: process_file(
                     input_path=file_path,
                     out_dir=file_output_dir,
-                    model="gpt-4o",
+                    model=model,
                     dpi=220,
                     temperature=0.0,
                     max_concurrency=5,

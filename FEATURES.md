@@ -15,13 +15,27 @@
 - Automatically enables OCR if >50% of samples need it
 - Saves API costs by skipping OCR when not needed
 
-### 3. Multiple File Support
-- Upload multiple PDFs and images at once
+### 3. Multiple File Format Support
+- Upload multiple PDFs, Office files (DOCX, PPTX, XLSX), and images at once
 - Drag-and-drop interface for easy file selection
 - Processes each file sequentially with progress tracking
 - All results packaged into single ZIP download
 
-### 4. WebSocket Real-time Updates
+### 4. Multiple AI Model Support
+- Choose from multiple AI providers: OpenAI, Anthropic, Google
+- OpenAI models: GPT-4o, GPT-4o Mini, GPT-4 Turbo
+- Anthropic models: Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku
+- Google models: Gemini 1.5 Pro, Gemini 1.5 Flash
+- Model selection dropdown in UI
+- API abstraction layer for seamless model switching
+
+### 5. Image Extraction from PDFs
+- Automatically extracts images embedded in PDF pages
+- Saves images to `images/` directory with descriptive names
+- AI models reference extracted images in generated markdown
+- Images linked using proper markdown syntax
+
+### 6. WebSocket Real-time Updates
 - Live progress updates during processing
 - No polling required - push-based updates
 - Connection per job ID
@@ -57,7 +71,7 @@
 
 - `GET /` - Web interface
 - `POST /api/upload` - Upload multiple files
-- `POST /api/process/{job_id}?auto_ocr=true` - Process with optional auto-OCR
+- `POST /api/process/{job_id}?auto_ocr=true&model=gpt-4o` - Process with optional auto-OCR and model selection
 - `GET /api/download/{job_id}` - Download ZIP results
 - `WS /ws/{job_id}` - WebSocket for progress updates
 
@@ -72,8 +86,8 @@ python main.py
 open http://localhost:8000
 
 # Or with curl (API)
-curl -X POST -F "files=@doc1.pdf" -F "files=@doc2.pdf" http://localhost:8000/api/upload
-curl -X POST http://localhost:8000/api/process/{job_id}?auto_ocr=true
+curl -X POST -F "files=@doc1.pdf" -F "files=@doc2.docx" http://localhost:8000/api/upload
+curl -X POST "http://localhost:8000/api/process/{job_id}?auto_ocr=true&model=claude-3-5-sonnet-20241022"
 curl -O http://localhost:8000/api/download/{job_id}
 ```
 
@@ -86,6 +100,9 @@ curl -O http://localhost:8000/api/download/{job_id}
 │   ├── page-001.png
 │   ├── page-002.md
 │   ├── page-002.png
+│   ├── images/
+│   │   ├── page-001_image-1.png
+│   │   └── page-002_image-1.png
 │   └── document_refined.md
 └── doc2/
     ├── page-001.md
@@ -96,10 +113,24 @@ curl -O http://localhost:8000/api/download/{job_id}
 ## Configuration
 
 Edit these in `converter.py`:
-- `model`: GPT model (default: "gpt-4o")
+- `model`: AI model (selectable in UI, default: "gpt-4o")
 - `dpi`: PDF render resolution (default: 220)
-- `max_concurrency`: Parallel OpenAI calls (default: 5)
+- `max_concurrency`: Parallel AI calls (default: 5)
 - `min_text_length`: OCR threshold (default: 50 chars)
+
+## Supported File Formats
+
+### Documents
+- PDF (with text or image-based)
+- DOCX (Microsoft Word)
+- PPTX (Microsoft PowerPoint)
+- XLSX (Microsoft Excel)
+
+### Images
+- PNG
+- JPG/JPEG
+
+All Office file formats are processed using MarkItDown's native support.
 
 ## Future Enhancements
 
@@ -109,3 +140,4 @@ Possible improvements:
 - Batch job queue
 - Results preview before download
 - Token usage estimation before processing
+- More AI model providers (Cohere, Mistral, etc.)

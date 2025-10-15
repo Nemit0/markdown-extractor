@@ -15,6 +15,9 @@ import pypdfium2.raw as pdfium_c
 from pypdf import PdfReader, PdfWriter
 from PIL import Image
 from openai import OpenAI
+import anthropic
+import google.generativeai as genai
+import os
 
 
 _ocr_reader = None
@@ -141,6 +144,23 @@ def build_messages(raw_markdown: str, page_png_path: Path, page_no: int, extract
     ]
 
 
+def ai_cleanup_page(
+    model: str,
+    page_no: int,
+    raw_markdown: str,
+    png_path: Path,
+    temperature: float,
+    extracted_images: List[str] = None,
+) -> Tuple[int, str, Dict[str, int]]:
+
+    if model.startswith("claude"):
+        return claude_cleanup_page(model, page_no, raw_markdown, png_path, temperature, extracted_images)
+    elif model.startswith("gemini"):
+        return gemini_cleanup_page(model, page_no, raw_markdown, png_path, temperature, extracted_images)
+    else:
+        return openai_cleanup_page(model, page_no, raw_markdown, png_path, temperature, extracted_images)
+
+
 def openai_cleanup_page(
     model: str,
     page_no: int,
@@ -157,6 +177,128 @@ def openai_cleanup_page(
         "prompt_tokens": getattr(resp.usage, "prompt_tokens", 0) if hasattr(resp, "usage") else 0,
         "completion_tokens": getattr(resp.usage, "completion_tokens", 0) if hasattr(resp, "usage") else 0,
         "total_tokens": getattr(resp.usage, "total_tokens", 0) if hasattr(resp, "usage") else 0,
+    }
+    return page_no, md_text, usage
+
+
+def claude_cleanup_page(
+    model: str,
+    page_no: int,
+    raw_markdown: str,
+    png_path: Path,
+    temperature: float,
+    extracted_images: List[str] = None,
+) -> Tuple[int, str, Dict[str, int]]:
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+    img_b64 = b64_image(png_path)
+    image_info = ""
+    if extracted_images and len(extracted_images) > 0:
+        image_info = f"\n\nExtracted images from this page (reference these in markdown):\n"
+        for img_path in extracted_images:
+            image_info += f"- {img_path}\n"
+        image_info += "\nUse ![alt text]({image_path}) syntax to reference these images in appropriate locations in the markdown."
+
+    system_prompt = (
+        "You are a precise Markdown formatter. Given raw text and a page image, "
+        "reconstruct clean, semantic Markdown for this single page only. "
+        "Preserve all content; do not add text not present on this page. "
+        "If the markdown text format does not match the image, prioritize the document structure from the image. "
+        "Infer headings, lists, tables (GitHub Flavored Markdown). "
+        "Keep math as LaTeX ($...$ / $$...$$). "
+        "If images were extracted from the page, you will be provided with their paths. "
+        "Reference these extracted images in the markdown using ![description](image_path) syntax where appropriate. "
+        "Place image references where they logically appear in the document flow. "
+        "Return ONLY the Markdown for this page - do NOT wrap it in code blocks or markdown fences. "
+        "Preserve Chart formatting. If the text does not respect the chart from the image, reformat it to match the chart."
+    )
+
+    user_content = f"Page {page_no} — raw markdown to clean:{image_info}\n\n{raw_markdown}"
+
+    message = client.messages.create(
+        model=model,
+        max_tokens=4096,
+        temperature=temperature,
+        system=system_prompt,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": img_b64,
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": user_content
+                }
+            ],
+        }]
+    )
+
+    md_text = message.content[0].text.strip()
+    usage = {
+        "prompt_tokens": message.usage.input_tokens,
+        "completion_tokens": message.usage.output_tokens,
+        "total_tokens": message.usage.input_tokens + message.usage.output_tokens,
+    }
+    return page_no, md_text, usage
+
+
+def gemini_cleanup_page(
+    model: str,
+    page_no: int,
+    raw_markdown: str,
+    png_path: Path,
+    temperature: float,
+    extracted_images: List[str] = None,
+) -> Tuple[int, str, Dict[str, int]]:
+    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+
+    image_info = ""
+    if extracted_images and len(extracted_images) > 0:
+        image_info = f"\n\nExtracted images from this page (reference these in markdown):\n"
+        for img_path in extracted_images:
+            image_info += f"- {img_path}\n"
+        image_info += "\nUse ![alt text]({image_path}) syntax to reference these images in appropriate locations in the markdown."
+
+    system_prompt = (
+        "You are a precise Markdown formatter. Given raw text and a page image, "
+        "reconstruct clean, semantic Markdown for this single page only. "
+        "Preserve all content; do not add text not present on this page. "
+        "If the markdown text format does not match the image, prioritize the document structure from the image. "
+        "Infer headings, lists, tables (GitHub Flavored Markdown). "
+        "Keep math as LaTeX ($...$ / $$...$$). "
+        "If images were extracted from the page, you will be provided with their paths. "
+        "Reference these extracted images in the markdown using ![description](image_path) syntax where appropriate. "
+        "Place image references where they logically appear in the document flow. "
+        "Return ONLY the Markdown for this page - do NOT wrap it in code blocks or markdown fences. "
+        "Preserve Chart formatting. If the text does not respect the chart from the image, reformat it to match the chart."
+    )
+
+    user_content = f"Page {page_no} — raw markdown to clean:{image_info}\n\n{raw_markdown}"
+
+    model_instance = genai.GenerativeModel(
+        model_name=model,
+        generation_config={"temperature": temperature}
+    )
+
+    img = Image.open(png_path)
+
+    response = model_instance.generate_content([
+        system_prompt + "\n\n" + user_content,
+        img
+    ])
+
+    md_text = response.text.strip()
+
+    usage = {
+        "prompt_tokens": getattr(response.usage_metadata, "prompt_token_count", 0) if hasattr(response, "usage_metadata") else 0,
+        "completion_tokens": getattr(response.usage_metadata, "candidates_token_count", 0) if hasattr(response, "usage_metadata") else 0,
+        "total_tokens": getattr(response.usage_metadata, "total_token_count", 0) if hasattr(response, "usage_metadata") else 0,
     }
     return page_no, md_text, usage
 
@@ -297,7 +439,7 @@ def process_file(
         with ThreadPoolExecutor(max_workers=max(1, int(max_concurrency))) as pool:
             futures = {
                 pool.submit(
-                    openai_cleanup_page,
+                    ai_cleanup_page,
                     model,
                     page_no,
                     raw_md,

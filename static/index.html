@@ -294,24 +294,43 @@
     <div class="container">
         <div class="header">
             <h1>Markdown Extractor</h1>
-            <p>Extract clean markdown from PDFs and images with OCR support</p>
+            <p>Extract clean markdown from PDFs, Office files, and images with OCR support</p>
         </div>
 
         <div class="card">
             <div class="drop-zone" id="dropZone">
                 <div class="drop-zone-icon">+</div>
                 <div class="drop-zone-text">Drag & drop files here</div>
-                <div class="drop-zone-hint">or click to browse (PDF, PNG, JPG, JPEG)</div>
+                <div class="drop-zone-hint">or click to browse (PDF, PNG, JPG, JPEG, DOCX, PPTX, XLSX)</div>
             </div>
 
-            <input type="file" id="fileInput" multiple accept=".pdf,.png,.jpg,.jpeg">
+            <input type="file" id="fileInput" multiple accept=".pdf,.png,.jpg,.jpeg,.docx,.pptx,.xlsx">
 
             <div class="file-list" id="fileList"></div>
 
             <div class="options">
-                <div class="toggle-option">
+                <div class="toggle-option" style="margin-bottom: 15px;">
                     <input type="checkbox" id="autoOcrToggle">
                     <label for="autoOcrToggle">Auto-detect OCR requirement (samples 3-5 random pages)</label>
+                </div>
+                <div class="toggle-option">
+                    <label for="modelSelect" style="margin-right: 10px;">AI Model:</label>
+                    <select id="modelSelect" style="padding: 8px 12px; border-radius: 4px; border: 1px solid #ccc; font-size: 0.95rem; cursor: pointer;">
+                        <optgroup label="OpenAI">
+                            <option value="gpt-4o" selected>GPT-4o</option>
+                            <option value="gpt-4o-mini">GPT-4o Mini</option>
+                            <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                        </optgroup>
+                        <optgroup label="Anthropic">
+                            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                            <option value="claude-3-opus-20240229">Claude 3 Opus</option>
+                            <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+                        </optgroup>
+                        <optgroup label="Google">
+                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                        </optgroup>
+                    </select>
                 </div>
             </div>
 
@@ -344,6 +363,7 @@
         const progressFill = document.getElementById('progressFill');
         const progressText = document.getElementById('progressText');
         const progressDetails = document.getElementById('progressDetails');
+        const modelSelect = document.getElementById('modelSelect');
 
         let files = [];
         let ws = null;
@@ -508,9 +528,10 @@
                     progressDetails.textContent = 'WebSocket connection error';
                 };
 
-                // Process files with auto-OCR option
+                // Process files with auto-OCR option and model selection
                 const autoOcr = autoOcrToggle.checked;
-                const processResponse = await fetch(`/api/process/${jobId}?auto_ocr=${autoOcr}`, {
+                const selectedModel = modelSelect.value;
+                const processResponse = await fetch(`/api/process/${jobId}?auto_ocr=${autoOcr}&model=${encodeURIComponent(selectedModel)}`, {
                     method: 'POST'
                 });
 
